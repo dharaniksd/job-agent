@@ -25,9 +25,12 @@ class Settings(BaseSettings):
     linkedin_client_secret: str = ""
     linkedin_redirect_uri: str = "http://localhost:8000/api/auth/linkedin/callback"
 
-    # Ollama (local AI — free, runs on your M3 Pro)
+    # Ollama (local AI — free, runs on your M3 Pro) — DEFAULT
     ollama_url: str = "http://ollama:11434"
     ollama_model: str = "llama3.1:14b"
+
+    # OpenAI — set USE_OPENAI=true in .env to enable; ignored by default
+    use_openai: bool = False
 
     class Config:
         env_file = ".env"

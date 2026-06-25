@@ -1,17 +1,14 @@
 """
-AI Client — Ollama-first with OpenAI fallback.
+AI Client — Ollama-first with optional OpenAI.
 
-Priority:
-  1. Ollama (local, free) — uses llama3.1:14b on your M3 Pro
-  2. OpenAI (cloud) — fallback if Ollama is not running or key is set
+Default behaviour: Ollama only (free, local, M3 Pro).
+To enable OpenAI as fallback, set USE_OPENAI=true in .env.
 
 Usage:
-    from app.core.ai_client import chat_json, chat_text
-    result = await chat_json(system="...", user="...")
+    from app.core.ai_client import chat_json, chat_text, ai_provider_status
 """
 import json
 import httpx
-from openai import AsyncOpenAI
 from app.core.config import settings
 
 
@@ -27,12 +24,11 @@ async def _ollama_available() -> bool:
 
 
 async def _ollama_chat(system: str, user: str, json_mode: bool = False) -> str:
-    """Call Ollama's /api/chat endpoint."""
     prompt = system + "\n\n" + user
     if json_mode:
-        prompt += "\n\nRespond with ONLY valid JSON, no markdown, no explanation."
+        prompt += "\n\nRespond with ONLY valid JSON. No markdown, no explanation, no code fences."
 
-    async with httpx.AsyncClient(timeout=120) as client:
+    async with httpx.AsyncClient(timeout=180) as client:
         resp = await client.post(
             f"{settings.ollama_url}/api/generate",
             json={
@@ -46,14 +42,11 @@ async def _ollama_chat(system: str, user: str, json_mode: bool = False) -> str:
         return resp.json()["response"].strip()
 
 
-# ── OpenAI ──────────────────────────────────────────────────────────────────────
-
-def _openai_client() -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=settings.openai_api_key)
-
+# ── OpenAI (only when USE_OPENAI=true) ─────────────────────────────────────────
 
 async def _openai_chat(system: str, user: str, json_mode: bool = False) -> str:
-    client = _openai_client()
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
     kwargs = {}
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
@@ -65,42 +58,56 @@ async def _openai_chat(system: str, user: str, json_mode: bool = False) -> str:
     return resp.choices[0].message.content.strip()
 
 
-# ── Public API ──────────────────────────────────────────────────────────────────
+# ── Routing logic ───────────────────────────────────────────────────────────────
 
-async def chat_text(system: str, user: str) -> str:
-    """Return AI response as plain text. Tries Ollama first, falls back to OpenAI."""
+async def _call(system: str, user: str, json_mode: bool) -> str:
+    """
+    Priority:
+      1. Ollama (always tried first — free + local)
+      2. OpenAI (only if USE_OPENAI=true AND OPENAI_API_KEY is set)
+    """
+    # Try Ollama
     if await _ollama_available():
         try:
-            return await _ollama_chat(system, user, json_mode=False)
+            return await _ollama_chat(system, user, json_mode)
         except Exception as e:
-            print(f"[ai_client] Ollama failed: {e}, falling back to OpenAI")
-    if settings.openai_api_key:
-        return await _openai_chat(system, user, json_mode=False)
-    raise RuntimeError("No AI provider available. Start Ollama or set OPENAI_API_KEY.")
+            print(f"[ai_client] Ollama error: {e}")
+
+    # OpenAI fallback — only if explicitly enabled
+    if settings.use_openai and settings.openai_api_key:
+        print("[ai_client] Falling back to OpenAI (USE_OPENAI=true)")
+        return await _openai_chat(system, user, json_mode)
+
+    raise RuntimeError(
+        "No AI provider available.\n"
+        "• Make sure Ollama is running: docker compose up ollama\n"
+        "• Or set USE_OPENAI=true and OPENAI_API_KEY in .env to use OpenAI."
+    )
+
+
+async def chat_text(system: str, user: str) -> str:
+    return await _call(system, user, json_mode=False)
 
 
 async def chat_json(system: str, user: str) -> dict:
-    """Return AI response parsed as JSON. Tries Ollama first, falls back to OpenAI."""
-    if await _ollama_available():
-        try:
-            raw = await _ollama_chat(system, user, json_mode=True)
-            # Strip markdown code fences if model adds them
-            raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-            return json.loads(raw)
-        except Exception as e:
-            print(f"[ai_client] Ollama failed: {e}, falling back to OpenAI")
-    if settings.openai_api_key:
-        raw = await _openai_chat(system, user, json_mode=True)
-        return json.loads(raw)
-    raise RuntimeError("No AI provider available. Start Ollama or set OPENAI_API_KEY.")
+    raw = await _call(system, user, json_mode=True)
+    # Strip markdown fences some models add
+    raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    return json.loads(raw)
 
 
 async def ai_provider_status() -> dict:
-    """Returns which AI providers are available."""
     ollama_ok = await _ollama_available()
-    openai_ok = bool(settings.openai_api_key)
     return {
-        "ollama": {"available": ollama_ok, "model": settings.ollama_model, "url": settings.ollama_url},
-        "openai": {"available": openai_ok, "model": "gpt-4o-mini"},
-        "active": "ollama" if ollama_ok else ("openai" if openai_ok else "none"),
+        "active": "ollama" if ollama_ok else ("openai" if (settings.use_openai and settings.openai_api_key) else "none"),
+        "ollama": {
+            "available": ollama_ok,
+            "model": settings.ollama_model,
+            "url": settings.ollama_url,
+        },
+        "openai": {
+            "enabled": settings.use_openai,
+            "configured": bool(settings.openai_api_key),
+            "note": "Set USE_OPENAI=true in .env to enable as fallback",
+        },
     }
