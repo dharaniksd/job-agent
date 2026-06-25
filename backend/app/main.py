@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import resume, jobs, applications, review_queue, auth, dashboard
 from app.core.database import engine
+from app.core.ai_client import ai_provider_status
 from app.models import base
 
 app = FastAPI(title="AI Job Application Agent", version="1.0.0")
@@ -25,3 +26,9 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"]
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/health/ai")
+async def health_ai():
+    """Shows which AI provider is active (Ollama or OpenAI)."""
+    return await ai_provider_status()

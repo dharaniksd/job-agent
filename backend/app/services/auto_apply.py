@@ -2,20 +2,11 @@
 Auto Apply Service — Human-in-the-Loop
 Uses Playwright to fill job application forms.
 When AI can't answer a question, it flags it for human review.
+Uses Ollama (local, free) with OpenAI fallback.
 """
 from playwright.async_api import async_playwright
-from openai import AsyncOpenAI
-from app.core.config import settings
+from app.core.ai_client import chat_json
 import json
-
-client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-# Questions AI knows how to answer from resume
-KNOWN_FIELDS = {
-    "first_name", "last_name", "email", "phone", "location",
-    "linkedin", "github", "portfolio", "resume", "cover_letter",
-    "years_of_experience", "current_company", "current_title",
-}
 
 
 async def ai_fill_field(field_label: str, field_type: str, resume_data: dict) -> dict:
@@ -23,30 +14,19 @@ async def ai_fill_field(field_label: str, field_type: str, resume_data: dict) ->
     Ask AI to fill a form field from resume data.
     Returns: {"answer": str, "confident": bool, "reason": str}
     """
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are filling a job application form. Given a form field and resume data, "
-                    "provide the best answer. Return JSON: {answer: string, confident: boolean, reason: string}. "
-                    "Set confident=false if you cannot determine the answer from the resume, "
-                    "or if the question requires a personal preference/opinion the user should answer."
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps({
-                    "field_label": field_label,
-                    "field_type": field_type,
-                    "resume_data": resume_data,
-                }),
-            },
-        ],
-        response_format={"type": "json_object"},
+    return await chat_json(
+        system=(
+            "You are filling a job application form. Given a form field and resume data, "
+            "provide the best answer. Return JSON: {answer: string, confident: boolean, reason: string}. "
+            "Set confident=false if you cannot determine the answer from the resume, "
+            "or if the question requires a personal preference/opinion the user should answer."
+        ),
+        user=json.dumps({
+            "field_label": field_label,
+            "field_type": field_type,
+            "resume_data": resume_data,
+        }),
     )
-    return json.loads(response.choices[0].message.content)
 
 
 async def apply_to_job(job_url: str, resume_data: dict) -> dict:

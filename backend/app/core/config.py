@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     linkedin_client_secret: str = ""
     linkedin_redirect_uri: str = "http://localhost:8000/api/auth/linkedin/callback"
 
+    # Ollama (local AI — free, runs on your M3 Pro)
+    ollama_url: str = "http://ollama:11434"
+    ollama_model: str = "llama3.1:14b"
+
     class Config:
         env_file = ".env"
 

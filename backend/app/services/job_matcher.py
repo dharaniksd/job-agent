@@ -1,40 +1,27 @@
 """
 Job Matcher Service
 Uses AI to score job listings against resume profile.
+Uses Ollama (local, free) with OpenAI fallback.
 """
-from openai import AsyncOpenAI
-from app.core.config import settings
 import json
-
-client = AsyncOpenAI(api_key=settings.openai_api_key)
+from app.core.ai_client import chat_json
 
 
 async def score_job(resume_data: dict, job: dict) -> float:
     """Score a job listing against the resume (0.0 - 1.0)."""
-    response = await client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are a job matching expert. Given a resume profile and a job listing, "
-                    "return a JSON object with: score (float 0-1), reason (string). "
-                    "Score 1.0 = perfect match, 0.0 = no match."
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps({
-                    "resume": resume_data,
-                    "job_title": job.get("title"),
-                    "job_company": job.get("company"),
-                    "job_description": job.get("description", "")[:2000],
-                }),
-            },
-        ],
-        response_format={"type": "json_object"},
+    result = await chat_json(
+        system=(
+            "You are a job matching expert. Given a resume profile and a job listing, "
+            "return a JSON object with: score (float 0-1), reason (string). "
+            "Score 1.0 = perfect match, 0.0 = no match."
+        ),
+        user=json.dumps({
+            "resume": resume_data,
+            "job_title": job.get("title"),
+            "job_company": job.get("company"),
+            "job_description": job.get("description", "")[:2000],
+        }),
     )
-    result = json.loads(response.choices[0].message.content)
     return float(result.get("score", 0.0))
 
 

@@ -1,6 +1,15 @@
 version: "3.9"
 
 services:
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # On Apple Silicon (M1/M2/M3) Ollama uses the Metal GPU automatically
+    restart: unless-stopped
+
   backend:
     build: ./backend
     ports:
@@ -10,10 +19,13 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:password@db:5432/jobagent
       - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=http://ollama:11434
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_started
+      ollama:
         condition: service_started
     volumes:
       - ./backend:/app
@@ -61,3 +73,4 @@ services:
 volumes:
   postgres_data:
   resume_uploads:
+  ollama_data:
