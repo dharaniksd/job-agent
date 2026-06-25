@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     # Ollama (local AI — free, runs on your M3 Pro) — DEFAULT
     ollama_url: str = "http://ollama:11434"
-    ollama_model: str = "llama3.1:14b"
+    ollama_model: str = "llama3.2:3b"  # fast 2GB model; override with llama3.1:14b for higher quality
 
     # OpenAI — set USE_OPENAI=true in .env to enable; ignored by default
     use_openai: bool = False

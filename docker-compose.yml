@@ -9,6 +9,31 @@ services:
       - ollama_data:/root/.ollama
     # On Apple Silicon (M1/M2/M3) Ollama uses the Metal GPU automatically
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list | grep -q llama3.2 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Pulls the model once on first run; skipped if already downloaded
+  ollama-pull:
+    image: ollama/ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: >
+      sh -c "
+        echo 'Waiting for Ollama to start...';
+        sleep 5;
+        echo 'Pulling llama3.2:3b (fast, 2GB, M3 optimised)...';
+        ollama pull llama3.2:3b;
+        echo 'Model ready!';
+      "
+    depends_on:
+      - ollama
+    restart: "no"
 
   backend:
     build: ./backend
@@ -20,6 +45,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:password@db:5432/jobagent
       - REDIS_URL=redis://redis:6379
       - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.2:3b
     depends_on:
       db:
         condition: service_healthy
