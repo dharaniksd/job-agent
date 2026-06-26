@@ -16,6 +16,19 @@ services:
       retries: 3
       start_period: 10s
 
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "4000:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - openwebui_data:/app/backend/data
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
   # Pulls the model once on first run; skipped if already downloaded
   ollama-pull:
     image: ollama/ollama
@@ -27,8 +40,8 @@ services:
       sh -c "
         echo 'Waiting for Ollama to start...';
         sleep 5;
-        echo 'Pulling llama3.2:3b (fast, 2GB, M3 optimised)...';
-        ollama pull llama3.2:3b;
+        echo 'Pulling llama3.1:8b (fast, 2GB, M3 optimised)...';
+        ollama pull llama3.1:8b;
         echo 'Model ready!';
       "
     depends_on:
@@ -45,7 +58,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:password@db:5432/jobagent
       - REDIS_URL=redis://redis:6379
       - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama3.2:3b
+      - OLLAMA_MODEL=llama3.1:8b
     depends_on:
       db:
         condition: service_healthy
@@ -100,3 +113,4 @@ volumes:
   postgres_data:
   resume_uploads:
   ollama_data:
+  openwebui_data:
